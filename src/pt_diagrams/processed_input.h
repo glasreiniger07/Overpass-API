@@ -77,7 +77,6 @@ struct Relation
     
     unsigned int last_stop;
 
-    string name;
     string ref;
     string network;
     string color;
