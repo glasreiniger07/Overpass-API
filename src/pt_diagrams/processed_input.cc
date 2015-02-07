@@ -21,6 +21,8 @@
 #include "../expat/escape_xml.h"
 
 #include <algorithm>
+#include <iostream>
+
 
 /**
 Relations:
@@ -92,6 +94,20 @@ double spat_distance(const NamedNode& nnode1, const NamedNode& nnode2)
       + cos(nnode1.lon/180.0*PI)*cos(nnode1.lat/180.0*PI)
         *cos(nnode2.lon/180.0*PI)*cos(nnode2.lat/180.0*PI))
       /PI*20000000;
+}
+
+double spat_distance(unsigned int ref1, unsigned int ref2)
+{
+  if ((nodes.find(ref1) != nodes.end()))
+  {
+    NamedNode nn_stop = nodes.find(ref1)->second;
+    if ((nodes.find(ref2) != nodes.end()))
+    {
+      NamedNode nn_platform = nodes.find(ref2)->second;
+      return spat_distance(nn_stop, nn_platform);
+    }
+  }
+  return -1.0;
 }
 
 bool Timespan::operator<(const Timespan& a) const
@@ -865,8 +881,32 @@ void start(const char *el, const char **attr)
       }
       else
       {
-	relation.forward_stops.push_back(ref);
-	relation.backward_stops.push_back(ref);
+        if (role.substr(0, 4) == "stop")
+        {
+          relation.last_stop = ref;
+        }
+        else if ((role.substr(0, 8) == "platform") && (relation.last_stop > 0))
+        {
+          if (relation.forward_stops[relation.forward_stops.size()-1] == relation.last_stop)
+          {
+            // check if they are close
+            double dist = spat_distance(relation.last_stop, ref);
+            if (dist > 0)
+            {
+              if (dist < 30.0)
+              {
+                // remove associated stop_position
+                cerr<<'.';
+                relation.forward_stops.pop_back();
+                relation.backward_stops.pop_back();
+              }
+              else
+                cerr<<"\ntoo far "<<dist<<':'<<relation.last_stop<<'-'<<ref<<'\n';
+            }
+          }
+        }
+        relation.forward_stops.push_back(ref);
+        relation.backward_stops.push_back(ref);
       }
     }
   }
