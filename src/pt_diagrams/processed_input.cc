@@ -21,6 +21,8 @@
 #include "../expat/escape_xml.h"
 
 #include <algorithm>
+#include <iostream>
+
 
 /**
 Relations:
@@ -70,7 +72,6 @@ namespace
   const unsigned int IN_NODE = 1;
   const unsigned int IN_RELATION = 2;
   bool is_stop = false;
-  bool is_stop_area = false;
   bool is_route = false;  
 
   vector< Relation >* relations;
@@ -92,6 +93,20 @@ double spat_distance(const NamedNode& nnode1, const NamedNode& nnode2)
       + cos(nnode1.lon/180.0*PI)*cos(nnode1.lat/180.0*PI)
         *cos(nnode2.lon/180.0*PI)*cos(nnode2.lat/180.0*PI))
       /PI*20000000;
+}
+
+double spat_distance(unsigned int ref1, unsigned int ref2)
+{
+  if ((nodes.find(ref1) != nodes.end()))
+  {
+    NamedNode nn_stop = nodes.find(ref1)->second;
+    if ((nodes.find(ref2) != nodes.end()))
+    {
+      NamedNode nn_platform = nodes.find(ref2)->second;
+      return spat_distance(nn_stop, nn_platform);
+    }
+  }
+  return -1.0;
 }
 
 bool Timespan::operator<(const Timespan& a) const
@@ -721,11 +736,8 @@ void start(const char *el, const char **attr)
       else if (!strcmp(attr[i], "v"))
 	value = attr[i+1];
     }
-    if (key == "name")
-      if (parse_status == IN_NODE)
-        nnode.name = escape_xml(value);
-      else if(parse_status == IN_RELATION)
-        relation.name = escape_xml(value);
+    if ((key == "name") && (parse_status == IN_NODE))
+      nnode.name = escape_xml(value);
     if ((key == "ref") && (parse_status == IN_RELATION))
       relation.ref = escape_xml(value);
     if ((key == "network") && (parse_status == IN_RELATION))
@@ -750,8 +762,6 @@ void start(const char *el, const char **attr)
       is_stop = true;
     if ((key == "public_transport") && (value == "stop_position"))
       is_stop = true;
-    if ((key == "public_transport") && (value == "stop_area") && (parse_status == IN_RELATION))
-      is_stop_area = true;
     if ((key == "amenity") && (value == "ferry_terminal"))
       is_stop = true;
     if ((key == "route") && (value == "bus"))
@@ -865,15 +875,38 @@ void start(const char *el, const char **attr)
       }
       else
       {
-	relation.forward_stops.push_back(ref);
-	relation.backward_stops.push_back(ref);
+        if (role.substr(0, 4) == "stop")
+        {
+          relation.last_stop = ref;
+        }
+        else if ((role.substr(0, 8) == "platform") && (relation.last_stop > 0))
+        {
+          if (relation.forward_stops[relation.forward_stops.size()-1] == relation.last_stop)
+          {
+            // check if they are close
+            double dist = spat_distance(relation.last_stop, ref);
+            if (dist > 0)
+            {
+              if (dist < 30.0)
+              {
+                // remove associated stop_position
+                cerr<<'.';
+                relation.forward_stops.pop_back();
+                relation.backward_stops.pop_back();
+              }
+              else
+                cerr<<"\ntoo far "<<dist<<':'<<relation.last_stop<<'-'<<ref<<'\n';
+            }
+          }
+        }
+        relation.forward_stops.push_back(ref);
+        relation.backward_stops.push_back(ref);
       }
     }
   }
   else if (!strcmp(el, "relation"))
   {
     parse_status = IN_RELATION;
-    is_stop_area = false;
     is_route = false;
     relation = Relation();
   }
@@ -901,16 +934,6 @@ void end(const char *el)
       else
 	correspondences.push_back(relation);
     }
-    else if (is_stop_area)
-    {
-      for(vector< unsigned int >::const_iterator it(relation.forward_stops.begin());
-          it != relation.forward_stops.end(); ++it)
-      {
-        if ((nodes.find(*it) != nodes.end()) && (nodes.find(*it)->second.name == ""))
-          nodes.find(*it)->second.name = relation.name;
-      }
-    }
-
   }
 }
 

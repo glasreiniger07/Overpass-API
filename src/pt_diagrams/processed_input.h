@@ -38,6 +38,7 @@ struct NamedNode
 };
 
 double spat_distance(const NamedNode& nnode1, const NamedNode& nnode2);
+double spat_distance(unsigned int ref1, unsigned int ref2);
 
 struct DisplayNode
 {
@@ -68,13 +69,14 @@ struct Timespan
 struct Relation
 {
   public:
-    Relation() : forward_stops(), backward_stops(), name(""), ref(""), network(""),
+    Relation() : forward_stops(), backward_stops(), last_stop(0), name(""), ref(""), network(""),
       color(""), from(""), to(""), direction(0), opening_hours() {}
     
     vector< unsigned int > forward_stops;
     vector< unsigned int > backward_stops;
     
-    string name;
+    unsigned int last_stop;
+
     string ref;
     string network;
     string color;
